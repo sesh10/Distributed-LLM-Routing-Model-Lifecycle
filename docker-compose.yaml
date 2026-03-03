@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+
+  base-ml:
+    build: ./base-ml
+    image: base-ml
+    container_name: base-ml
+    command: echo "Base image built"
+
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - router-service
+      - model-worker
+      - redis
+
+  router-service:
+    build: ./router-service
+    depends_on:
+      - base-ml
+    volumes:
+      - shared:/shared
+
+  model-worker:
+    build: ./model-worker
+    depends_on:
+      - base-ml
+    # volumes:
+    # - hf_cache:/root/.cache/huggingface
+
+  retrainer:
+    build:
+      context: .
+      dockerfile: retrainer/Dockerfile
+    depends_on:
+      - base-ml
+    volumes:
+      - shared:/shared
+
+  redis:
+    image: redis:7
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.12.1
+    environment:
+      MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE: "true"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow.db
+    ports:
+      - "5000:5000"
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+volumes:
+  shared:
